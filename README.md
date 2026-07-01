@@ -147,9 +147,10 @@ Client → [Size Check: max 1MB] → [Rate Limiter: 100 msg/s] →
 
 ## 👤 Developer
 
-- **Name**: Abhishek
-- **GitHub**: [github.com/abhishek](https://github.com/abhishek)
-- **LinkedIn**: [linkedin.com/in/abhishek](https://linkedin.com/in/abhishek)
+- **Name**: Abhishek Gurjar
+- **GitHub**: [github.com/abhishekgurjarin](https://github.com/abhishekgurjarin)
+- **LinkedIn**: [linkedin.com/in/abhishekgurjarin](https://www.linkedin.com/in/abhishekgurjarin/)
+- **Portfolio**: [abhishekgurjar.boad.in](https://abhishekgurjar.boad.in/)
 
 ---
 

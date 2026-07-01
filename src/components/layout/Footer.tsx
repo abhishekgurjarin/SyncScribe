@@ -53,11 +53,11 @@ export function Footer() {
           <div>
             <h4 className="text-sm font-semibold mb-3">Developer</h4>
             <p className="text-sm text-muted-foreground mb-2">
-              Abhishek
+              Abhishek Gurjar
             </p>
             <div className="flex items-center gap-3">
               <Link
-                href="https://github.com/abhishek"
+                href="https://github.com/abhishekgurjarin"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -67,7 +67,7 @@ export function Footer() {
                 <span>GitHub</span>
               </Link>
               <Link
-                href="https://linkedin.com/in/abhishek"
+                href="https://www.linkedin.com/in/abhishekgurjarin/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -76,14 +76,23 @@ export function Footer() {
                 <Globe className="w-4 h-4" />
                 <span>LinkedIn</span>
               </Link>
+              <Link
+                href="https://abhishekgurjar.boad.in/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Portfolio"
+              >
+                <Globe className="w-4 h-4" />
+                <span>Portfolio</span>
+              </Link>
             </div>
           </div>
         </div>
 
         <div className="mt-8 pt-4 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} SyncScribe — House of Edtech
-            Assignment
+            © {new Date().getFullYear()} SyncScribe
           </p>
           <p className="text-xs text-muted-foreground">
             Made with ♥ using Next.js 16 & Yjs
