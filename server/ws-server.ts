@@ -17,7 +17,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
 import * as Y from "yjs";
 
-const PORT = parseInt(process.env.WS_PORT || "1234", 10);
+const PORT = parseInt(process.env.PORT || process.env.WS_PORT || "1234", 10);
 const MAX_PAYLOAD_SIZE = 1_048_576; // 1MB
 const MAX_MESSAGES_PER_SECOND = 100;
 const MAX_DOCUMENT_SIZE = 52_428_800; // 50MB
