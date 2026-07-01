@@ -10,6 +10,11 @@ A production-grade, local-first collaborative document editor with offline synch
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue?logo=postgresql)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-blue?logo=tailwindcss)
 
+## 🔗 Live Links
+
+- **Live Application:** [https://sync-scribe-theta.vercel.app/](https://sync-scribe-theta.vercel.app/)
+- **WebSocket Server:** `wss://syncscribe-s21e.onrender.com`
+
 ## ✨ Key Features
 
 ### 🔌 Local-First Architecture
@@ -37,7 +42,7 @@ A production-grade, local-first collaborative document editor with offline synch
 - **User presence**: Colored avatars show who's actively editing
 - **Role-based access**: Owner, Editor, and Viewer roles with granular permissions
 
-### 🤖 AI-Powered Features (Gemini via Vercel AI SDK)
+### 🤖 AI-Powered Features (gpt-4o-mini via OpenRouter & Vercel AI SDK)
 - Summarize, Continue Writing, Improve, Fix Grammar, Explain, Outline, Translate
 - Rate-limited (10 requests/minute/user) with input validation
 
@@ -62,15 +67,15 @@ A production-grade, local-first collaborative document editor with offline synch
 | Database | **PostgreSQL** (Neon Serverless) |
 | ORM | **Drizzle ORM** |
 | Auth | **Auth.js v5** (JWT strategy) |
-| AI | **Vercel AI SDK** + **Google Gemini** |
-| Deployment | **Vercel** (frontend) + **Railway** (WebSocket server) |
+| AI | **Vercel AI SDK** + **OpenRouter (gpt-4o-mini)** |
+| Deployment | **Vercel** (frontend) + **Render** (WebSocket server) |
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - Node.js 20+
 - PostgreSQL database (or [Neon](https://neon.tech) free tier)
-- Google Gemini API key (optional, for AI features)
+- OpenRouter API key (optional, for AI features)
 
 ### Setup
 
@@ -102,7 +107,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 | Script | Description |
 |---|---|
-| `npm run dev` | Start Next.js dev server with Turbopack |
+| `npm run dev` | Start Next.js dev server |
 | `npm run build` | Production build |
 | `npm run ws:server` | Start the WebSocket collaboration server |
 | `npm run db:push` | Push schema to database |

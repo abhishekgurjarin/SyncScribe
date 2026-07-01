@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -13,7 +13,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@ai-sdk/google": "^4.0.3",
+    "@ai-sdk/openai": "^4.0.4",
     "@auth/drizzle-adapter": "^1.11.2",
     "@base-ui/react": "^1.6.0",
     "@neondatabase/serverless": "^1.1.0",

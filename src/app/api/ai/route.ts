@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 import { auth } from "../../../../auth";
 import { requireAuth } from "@/lib/authorization";
 import { aiActionSchema } from "@/lib/validators";
-import { google } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
+
+const openrouter = createOpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
 
 // Rate limiting map (in-memory, per-server-instance)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -69,9 +74,9 @@ export async function POST(request: Request) {
     const { action, text, language } = parsed.data;
 
     // Check if AI is configured
-    if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    if (!process.env.OPENROUTER_API_KEY) {
       return NextResponse.json(
-        { error: "AI is not configured. Add GOOGLE_GENERATIVE_AI_API_KEY to enable AI features." },
+        { error: "AI is not configured. Add OPENROUTER_API_KEY to enable AI features." },
         { status: 503 }
       );
     }
@@ -84,7 +89,7 @@ export async function POST(request: Request) {
     const prompt = promptFn(text, language);
 
     const { text: result } = await generateText({
-      model: google("gemini-2.0-flash"),
+      model: openrouter("openai/gpt-4o-mini"),
       prompt,
       maxTokens: 2000,
     });
