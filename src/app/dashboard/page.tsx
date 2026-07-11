@@ -69,20 +69,14 @@ function DashboardContent() {
   const createDocument = async () => {
     setIsCreating(true);
     try {
-      const res = await fetch("/api/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newTitle || "Untitled Document" }),
-      });
-
-      if (res.ok) {
-        const doc = await res.json();
-        router.push(`/editor/${doc.id}`);
-      } else {
-        toast.error("Failed to create document");
-      }
-    } catch {
-      toast.error("Something went wrong");
+      // Use the new Server Action instead of the API route
+      const { createDocumentAction } = await import("@/app/actions");
+      const doc = await createDocumentAction(newTitle);
+      
+      router.push(`/editor/${doc.id}`);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to create document");
     } finally {
       setIsCreating(false);
       setShowCreateDialog(false);
