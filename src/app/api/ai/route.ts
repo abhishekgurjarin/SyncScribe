@@ -66,7 +66,7 @@ export async function POST(request: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.errors[0]?.message || "Invalid input" },
+        { error: parsed.error.issues[0]?.message || "Invalid input" },
         { status: 400 }
       );
     }
@@ -91,7 +91,6 @@ export async function POST(request: Request) {
     const { text: result } = await generateText({
       model: openrouter("openai/gpt-4o-mini"),
       prompt,
-      maxTokens: 2000,
     });
 
     return NextResponse.json({ result });

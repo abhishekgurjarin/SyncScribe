@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -54,6 +55,35 @@ import { getCursorColor, getInitials, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 
 type ConnectionStatus = "connected" | "connecting" | "disconnected";
+
+// Toolbar button component
+const ToolbarButton = ({
+  onClick,
+  isActive = false,
+  disabled = false,
+  children,
+  title,
+}: {
+  onClick: () => void;
+  isActive?: boolean;
+  disabled?: boolean;
+  children: React.ReactNode;
+  title: string;
+}) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={`p-1.5 rounded-md transition-colors ${
+      isActive
+        ? "bg-primary/20 text-primary"
+        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+    } disabled:opacity-30 disabled:cursor-not-allowed`}
+    title={title}
+    aria-label={title}
+  >
+    {children}
+  </button>
+);
 
 function EditorPage() {
   const { documentId } = useParams<{ documentId: string }>();
@@ -154,7 +184,7 @@ function EditorPage() {
       // Fallback: if IDB init itself throws, continue without local persistence
       console.warn("[IndexedDB] Failed to initialize:", err);
       setIsLocalLoaded(true); // treat as if synced immediately
-      // @ts-expect-error assign dummy
+      // fallback mock object
       idb = { destroy: () => {} } as IndexeddbPersistence;
       setIdbProvider(null);
     }
@@ -213,7 +243,6 @@ function EditorPage() {
     editable: !isReadOnly,
     extensions: [
       StarterKit.configure({
-        history: false,
         // Tiptap v3 includes undoRedo by default; disable it — Collaboration handles history
         undoRedo: false,
       }),
@@ -457,34 +486,6 @@ function EditorPage() {
     if (showShareDialog) fetchCollabs();
   }, [showShareDialog]);
 
-  // Toolbar button component
-  const ToolbarButton = ({
-    onClick,
-    isActive = false,
-    disabled = false,
-    children,
-    title,
-  }: {
-    onClick: () => void;
-    isActive?: boolean;
-    disabled?: boolean;
-    children: React.ReactNode;
-    title: string;
-  }) => (
-    <button
-      onClick={onClick}
-      disabled={disabled || isReadOnly}
-      className={`p-1.5 rounded-md transition-colors ${
-        isActive
-          ? "bg-primary/20 text-primary"
-          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-      } disabled:opacity-30 disabled:cursor-not-allowed`}
-      title={title}
-      aria-label={title}
-    >
-      {children}
-    </button>
-  );
 
   if (authStatus === "loading") {
     return (

@@ -41,7 +41,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased bg-background text-foreground min-h-screen`}
       >
-        <TooltipProvider delayDuration={300}>
+        <TooltipProvider delay={0}>
           {children}
         </TooltipProvider>
         <Toaster

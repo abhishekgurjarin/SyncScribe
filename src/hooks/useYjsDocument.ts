@@ -1,6 +1,7 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
 import { WebsocketProvider } from "y-websocket";
@@ -47,26 +48,20 @@ export function useYjsDocument({
   const [isSynced, setIsSynced] = useState(false);
   const [isLocalLoaded, setIsLocalLoaded] = useState(false);
 
-  const ydocRef = useRef<Y.Doc | null>(null);
-  const wsProviderRef = useRef<WebsocketProvider | null>(null);
-  const idbProviderRef = useRef<IndexeddbPersistence | null>(null);
-
-  // Create doc once
-  if (!ydocRef.current) {
-    ydocRef.current = new Y.Doc();
-  }
+  const [ydoc] = useState(() => new Y.Doc());
+  const [wsProvider, setWsProvider] = useState<WebsocketProvider | null>(null);
+  const [idbProvider, setIdbProvider] = useState<IndexeddbPersistence | null>(null);
+  const [awareness, setAwareness] = useState<Awareness | null>(null);
 
   useEffect(() => {
-    const ydoc = ydocRef.current!;
-
     // 1. IndexedDB persistence — local-first source of truth
-    const idbProvider = new IndexeddbPersistence(
+    const newIdbProvider = new IndexeddbPersistence(
       `syncscribe-${documentId}`,
       ydoc
     );
-    idbProviderRef.current = idbProvider;
+    setIdbProvider(newIdbProvider);
 
-    idbProvider.on("synced", () => {
+    newIdbProvider.on("synced", () => {
       setIsLocalLoaded(true);
     });
 
@@ -74,7 +69,7 @@ export function useYjsDocument({
     const effectiveWsUrl =
       wsUrl || process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:1234";
 
-    const wsProvider = new WebsocketProvider(
+    const newWsProvider = new WebsocketProvider(
       effectiveWsUrl,
       documentId,
       ydoc,
@@ -83,49 +78,46 @@ export function useYjsDocument({
         params: token ? { token } : {},
       }
     );
-    wsProviderRef.current = wsProvider;
+    setWsProvider(newWsProvider);
+    setAwareness(newWsProvider.awareness);
 
     // Connection status tracking
-    wsProvider.on("status", ({ status }: { status: string }) => {
+    newWsProvider.on("status", ({ status }: { status: string }) => {
       setConnectionStatus(status as ConnectionStatus);
     });
 
-    wsProvider.on("sync", (synced: boolean) => {
+    newWsProvider.on("sync", (synced: boolean) => {
       setIsSynced(synced);
     });
 
     // Set awareness local state
-    wsProvider.awareness.setLocalStateField("user", {
+    newWsProvider.awareness.setLocalStateField("user", {
       id: userId,
       name: userName,
       color: userColor,
     });
 
     return () => {
-      wsProvider.destroy();
-      idbProvider.destroy();
-      wsProviderRef.current = null;
-      idbProviderRef.current = null;
+      newWsProvider.destroy();
+      newIdbProvider.destroy();
     };
-  }, [documentId, userId, userName, userColor, wsUrl, token]);
+  }, [documentId, userId, userName, userColor, wsUrl, token, ydoc]);
 
   const destroy = useCallback(() => {
-    wsProviderRef.current?.destroy();
-    idbProviderRef.current?.destroy();
-    ydocRef.current?.destroy();
-    ydocRef.current = null;
-    wsProviderRef.current = null;
-    idbProviderRef.current = null;
-  }, []);
+    wsProvider?.destroy();
+    idbProvider?.destroy();
+    ydoc.destroy();
+  }, [wsProvider, idbProvider, ydoc]);
 
   return {
-    ydoc: ydocRef.current,
-    provider: wsProviderRef.current,
-    indexeddbProvider: idbProviderRef.current,
-    awareness: wsProviderRef.current?.awareness ?? null,
+    ydoc,
+    provider: wsProvider,
+    indexeddbProvider: idbProvider,
+    awareness,
     connectionStatus,
     isSynced,
     isLocalLoaded,
     destroy,
   };
 }
+

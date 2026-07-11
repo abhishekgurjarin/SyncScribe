@@ -49,13 +49,13 @@ export const createVersionSchema = z.object({
 export const inviteCollaboratorSchema = z.object({
   email: z.string().email("Invalid email address"),
   role: z.enum(["editor", "viewer"], {
-    errorMap: () => ({ message: "Role must be 'editor' or 'viewer'" }),
+    message: "Role must be 'editor' or 'viewer'",
   }),
 });
 
 export const updateCollaboratorSchema = z.object({
   role: z.enum(["editor", "viewer"], {
-    errorMap: () => ({ message: "Role must be 'editor' or 'viewer'" }),
+    message: "Role must be 'editor' or 'viewer'",
   }),
 });
 

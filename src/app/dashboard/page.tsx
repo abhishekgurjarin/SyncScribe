@@ -35,7 +35,7 @@ interface Document {
 }
 
 function DashboardContent() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const [ownedDocs, setOwnedDocs] = useState<Document[]>([]);
   const [sharedDocs, setSharedDocs] = useState<Document[]>([]);
@@ -44,12 +44,6 @@ function DashboardContent() {
   const [search, setSearch] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-
-  useEffect(() => {
-    if (status === "authenticated") {
-      fetchDocuments();
-    }
-  }, [status]);
 
   const fetchDocuments = async () => {
     try {
@@ -65,6 +59,12 @@ function DashboardContent() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      fetchDocuments();
+    }
+  }, [status]);
 
   const createDocument = async () => {
     setIsCreating(true);
