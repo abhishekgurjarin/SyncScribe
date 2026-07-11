@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { documents, collaborators } from "@/db/schema";
-import { auth } from "@/auth";
+import { auth } from "../../auth";
 import { revalidatePath } from "next/cache";
 
 export async function createDocumentAction(title: string) {
