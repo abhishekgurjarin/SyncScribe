@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { documents, collaborators } from "@/db/schema";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { type Role, ROLE_HIERARCHY } from "./utils";
 
 export interface AccessCheckResult {

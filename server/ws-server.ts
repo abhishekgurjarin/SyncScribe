@@ -2,20 +2,16 @@
  * SyncScribe WebSocket Collaboration Server
  *
  * Standalone Node.js WebSocket server for real-time document collaboration.
- * Uses y-websocket for Yjs CRDT synchronization.
- *
- * Security features:
- * - Payload size limits (1MB per message)
- * - Rate limiting (100 messages/second per client)
- * - Connection timeout (30 min idle)
- * - Document size monitoring
- *
- * Run: npx tsx server/ws-server.ts
+ * Complies with the standard y-websocket protocol (sync, awareness).
  */
 
 import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
 import * as Y from "yjs";
+import * as syncProtocol from "y-protocols/sync";
+import * as awarenessProtocol from "y-protocols/awareness";
+import * as encoding from "lib0/encoding";
+import * as decoding from "lib0/decoding";
 
 const PORT = parseInt(process.env.PORT || process.env.WS_PORT || "1234", 10);
 const MAX_PAYLOAD_SIZE = 1_048_576; // 1MB
@@ -23,14 +19,90 @@ const MAX_MESSAGES_PER_SECOND = 100;
 const MAX_DOCUMENT_SIZE = 52_428_800; // 50MB
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
-// In-memory document store
-const docs = new Map<string, Y.Doc>();
+const messageSync = 0;
+const messageAwareness = 1;
+const messageQueryAwareness = 3;
+
+interface WSSharedDoc extends Y.Doc {
+  name: string;
+  conns: Map<WebSocket, Set<number>>;
+  awareness: awarenessProtocol.Awareness;
+}
+
+const docs = new Map<string, WSSharedDoc>();
+
+function send(doc: WSSharedDoc, conn: WebSocket, m: Uint8Array) {
+  if (conn.readyState !== WebSocket.OPEN) {
+    closeConn(doc, conn);
+    return;
+  }
+  try {
+    conn.send(m, { binary: true });
+  } catch {
+    closeConn(doc, conn);
+  }
+}
+
+function closeConn(doc: WSSharedDoc, conn: WebSocket) {
+  if (doc.conns.has(conn)) {
+    const controlledIds = doc.conns.get(conn);
+    doc.conns.delete(conn);
+    if (controlledIds && controlledIds.size > 0) {
+      awarenessProtocol.removeAwarenessStates(
+        doc.awareness,
+        Array.from(controlledIds),
+        null
+      );
+    }
+  }
+  try {
+    conn.close();
+  } catch {}
+}
+
+function getOrCreateDoc(docName: string): WSSharedDoc {
+  let doc = docs.get(docName);
+  if (!doc) {
+    doc = new Y.Doc() as WSSharedDoc;
+    doc.name = docName;
+    doc.conns = new Map();
+    doc.awareness = new awarenessProtocol.Awareness(doc);
+    doc.awareness.setLocalState(null);
+
+    doc.on("update", (update: Uint8Array) => {
+      if (Y.encodeStateAsUpdate(doc!).byteLength > MAX_DOCUMENT_SIZE) {
+        console.warn(`[SECURITY] Document ${doc!.name} exceeds size limit`);
+      }
+      const encoder = encoding.createEncoder();
+      encoding.writeVarUint(encoder, messageSync);
+      syncProtocol.writeUpdate(encoder, update);
+      const message = encoding.toUint8Array(encoder);
+      doc!.conns.forEach((_, conn) => send(doc!, conn, message));
+    });
+
+    doc.awareness.on(
+      "update",
+      ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }) => {
+        const changedClients = added.concat(updated, removed);
+        const encoder = encoding.createEncoder();
+        encoding.writeVarUint(encoder, messageAwareness);
+        encoding.writeVarUint8Array(
+          encoder,
+          awarenessProtocol.encodeAwarenessUpdate(doc!.awareness, changedClients)
+        );
+        const message = encoding.toUint8Array(encoder);
+        doc!.conns.forEach((_, conn) => send(doc!, conn, message));
+      }
+    );
+
+    docs.set(docName, doc);
+    console.log(`[DOC] Created document room: ${docName}`);
+  }
+  return doc;
+}
 
 // Rate limiter per connection
-const rateLimiters = new Map<
-  WebSocket,
-  { count: number; resetAt: number }
->();
+const rateLimiters = new Map<WebSocket, { count: number; resetAt: number }>();
 
 function checkRateLimit(ws: WebSocket): boolean {
   const now = Date.now();
@@ -50,143 +122,122 @@ function checkRateLimit(ws: WebSocket): boolean {
   return true;
 }
 
-function getOrCreateDoc(docName: string): Y.Doc {
-  let doc = docs.get(docName);
-  if (!doc) {
-    doc = new Y.Doc();
-    docs.set(docName, doc);
-    console.log(`[DOC] Created document: ${docName}`);
-  }
-  return doc;
-}
-
-// Track connections per document
-const docConnections = new Map<string, Set<WebSocket>>();
-
 const server = http.createServer((_req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("SyncScribe WebSocket Server\n");
+  res.end("SyncScribe y-websocket Server\n");
 });
 
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", (ws, req) => {
   const url = new URL(req.url || "/", `http://localhost:${PORT}`);
-  const docName = url.pathname.slice(1) || "default";
+  const docName = url.pathname.slice(1).split("?")[0] || "default";
 
-  console.log(`[WS] Client connected to document: ${docName}`);
+  console.log(`[WS] Client connected to document room: ${docName}`);
 
   const doc = getOrCreateDoc(docName);
+  doc.conns.set(ws, new Set());
 
-  // Track connection
-  if (!docConnections.has(docName)) {
-    docConnections.set(docName, new Set());
+  ws.binaryType = "arraybuffer";
+
+  // Send initial sync step 1
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, messageSync);
+  syncProtocol.writeSyncStep1(encoder, doc);
+  send(doc, ws, encoding.toUint8Array(encoder));
+
+  // Send current awareness states
+  const awarenessStates = doc.awareness.getStates();
+  if (awarenessStates.size > 0) {
+    const awarenessEncoder = encoding.createEncoder();
+    encoding.writeVarUint(awarenessEncoder, messageAwareness);
+    encoding.writeVarUint8Array(
+      awarenessEncoder,
+      awarenessProtocol.encodeAwarenessUpdate(
+        doc.awareness,
+        Array.from(awarenessStates.keys())
+      )
+    );
+    send(doc, ws, encoding.toUint8Array(awarenessEncoder));
   }
-  docConnections.get(docName)!.add(ws);
 
-  // Send initial state
-  const initialState = Y.encodeStateAsUpdate(doc);
-  if (initialState.byteLength > 0) {
-    ws.send(initialState, { binary: true });
-  }
-
-  // Idle timeout
   let idleTimer = setTimeout(() => {
     console.log(`[WS] Idle timeout for client on: ${docName}`);
-    ws.close(1000, "Idle timeout");
+    closeConn(doc, ws);
   }, IDLE_TIMEOUT_MS);
 
   const resetIdleTimer = () => {
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      ws.close(1000, "Idle timeout");
+      closeConn(doc, ws);
     }, IDLE_TIMEOUT_MS);
   };
 
-  ws.on("message", (data: Buffer) => {
+  ws.on("message", (raw: ArrayBuffer | Buffer) => {
     resetIdleTimer();
 
-    // Payload size check
+    const data = new Uint8Array(raw);
+
     if (data.byteLength > MAX_PAYLOAD_SIZE) {
-      console.warn(
-        `[SECURITY] Oversized payload rejected: ${data.byteLength} bytes from ${docName}`
-      );
-      ws.send(
-        JSON.stringify({ error: "Payload too large", maxSize: MAX_PAYLOAD_SIZE })
-      );
+      console.warn(`[SECURITY] Oversized payload rejected: ${data.byteLength} bytes`);
       return;
     }
 
-    // Rate limiting
     if (!checkRateLimit(ws)) {
-      console.warn(`[SECURITY] Rate limit exceeded for client on: ${docName}`);
-      ws.send(JSON.stringify({ error: "Rate limit exceeded" }));
       return;
     }
 
     try {
-      // Apply update to the shared doc
-      const update = new Uint8Array(data);
-      Y.applyUpdate(doc, update);
+      const decoder = decoding.createDecoder(data);
+      const messageType = decoding.readVarUint(decoder);
 
-      // Check document size after update
-      const docState = Y.encodeStateAsUpdate(doc);
-      if (docState.byteLength > MAX_DOCUMENT_SIZE) {
-        console.warn(
-          `[SECURITY] Document ${docName} exceeds size limit: ${docState.byteLength} bytes`
+      if (messageType === messageSync) {
+        const replyEncoder = encoding.createEncoder();
+        encoding.writeVarUint(replyEncoder, messageSync);
+        syncProtocol.readSyncMessage(decoder, replyEncoder, doc, ws);
+        if (encoding.length(replyEncoder) > 1) {
+          send(doc, ws, encoding.toUint8Array(replyEncoder));
+        }
+      } else if (messageType === messageAwareness) {
+        const awarenessUpdate = decoding.readVarUint8Array(decoder);
+        awarenessProtocol.applyAwarenessUpdate(doc.awareness, awarenessUpdate, ws);
+      } else if (messageType === messageQueryAwareness) {
+        const replyEncoder = encoding.createEncoder();
+        encoding.writeVarUint(replyEncoder, messageAwareness);
+        encoding.writeVarUint8Array(
+          replyEncoder,
+          awarenessProtocol.encodeAwarenessUpdate(
+            doc.awareness,
+            Array.from(doc.awareness.getStates().keys())
+          )
         );
-        // Don't broadcast, but don't crash either
-        return;
-      }
-
-      // Broadcast to all other clients on the same document
-      const connections = docConnections.get(docName);
-      if (connections) {
-        connections.forEach((client) => {
-          if (client !== ws && client.readyState === WebSocket.OPEN) {
-            client.send(data, { binary: true });
-          }
-        });
+        send(doc, ws, encoding.toUint8Array(replyEncoder));
       }
     } catch (error) {
-      console.error(`[ERROR] Failed to process update for ${docName}:`, error);
-      // Don't crash the server on malformed data
+      console.error(`[ERROR] Malformed protocol message on ${docName}:`, error);
     }
   });
 
   ws.on("close", () => {
-    console.log(`[WS] Client disconnected from: ${docName}`);
+    console.log(`[WS] Client disconnected from room: ${docName}`);
     clearTimeout(idleTimer);
     rateLimiters.delete(ws);
-
-    const connections = docConnections.get(docName);
-    if (connections) {
-      connections.delete(ws);
-      if (connections.size === 0) {
-        // Keep the doc in memory for a while for reconnections
-        // In production, you'd save to DB and garbage collect
-        console.log(
-          `[DOC] No more clients for ${docName}, keeping in memory`
-        );
-      }
-    }
+    closeConn(doc, ws);
   });
 
   ws.on("error", (error) => {
     console.error(`[ERROR] WebSocket error on ${docName}:`, error);
+    closeConn(doc, ws);
   });
 });
 
 server.listen(PORT, () => {
-  console.log(`\n🚀 SyncScribe WebSocket Server`);
+  console.log(`\n🚀 SyncScribe y-websocket Server`);
   console.log(`   Listening on ws://localhost:${PORT}`);
   console.log(`   Max payload: ${MAX_PAYLOAD_SIZE / 1024}KB`);
-  console.log(`   Rate limit: ${MAX_MESSAGES_PER_SECOND} msg/s`);
-  console.log(`   Max doc size: ${MAX_DOCUMENT_SIZE / 1024 / 1024}MB`);
-  console.log(`   Idle timeout: ${IDLE_TIMEOUT_MS / 60000} min\n`);
+  console.log(`   Rate limit: ${MAX_MESSAGES_PER_SECOND} msg/s\n`);
 });
 
-// Graceful shutdown
 process.on("SIGINT", () => {
   console.log("\n[SHUTDOWN] Closing WebSocket server...");
   wss.close(() => {

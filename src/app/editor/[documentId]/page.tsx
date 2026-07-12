@@ -1,14 +1,14 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useParams, useRouter } from "next/navigation";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { IndexeddbPersistence } from "y-indexeddb";
 import { WebsocketProvider } from "y-websocket";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -18,7 +18,6 @@ import TaskItem from "@tiptap/extension-task-item";
 import TextAlign from "@tiptap/extension-text-align";
 import Typography from "@tiptap/extension-typography";
 import { Providers } from "@/components/providers";
-import { Navbar } from "@/components/layout/Navbar";
 import {
   Bold,
   Italic,
@@ -43,7 +42,6 @@ import {
   WifiOff,
   Loader2,
   Save,
-  Users,
   History,
   Sparkles,
   Share2,
@@ -55,6 +53,45 @@ import { getCursorColor, getInitials, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 
 type ConnectionStatus = "connected" | "connecting" | "disconnected";
+
+interface VersionItem {
+  id: string;
+  versionNumber: number;
+  title: string;
+  description?: string;
+  snapshot?: string;
+  createdAt: string;
+  createdBy: string;
+  createdByUser?: {
+    id: string;
+    name: string | null;
+    email: string;
+    image: string | null;
+  };
+}
+
+interface CollabItem {
+  id: string;
+  userId: string;
+  role: string;
+  user?: {
+    id: string;
+    name: string | null;
+    email: string;
+    image: string | null;
+  };
+}
+
+// Helper for converting Uint8Array to base64
+const uint8ArrayToBase64 = (buffer: Uint8Array) => {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+};
 
 // Toolbar button component
 const ToolbarButton = ({
@@ -93,10 +130,10 @@ function EditorPage() {
   // Core state — ydoc and awareness are stable singletons for this editor session
   const [ydoc] = useState(() => new Y.Doc());
   const [awareness] = useState(() => new Awareness(ydoc));
-  const [wsProvider, setWsProvider] = useState<WebsocketProvider | null>(null);
-  const [idbProvider, setIdbProvider] = useState<IndexeddbPersistence | null>(null);
+  const [, setWsProvider] = useState<WebsocketProvider | null>(null);
+  const [, setIdbProvider] = useState<IndexeddbPersistence | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
-  const [isSynced, setIsSynced] = useState(false);
+  const [, setIsSynced] = useState(false);
   const [isLocalLoaded, setIsLocalLoaded] = useState(false);
 
   // Document metadata
@@ -111,7 +148,7 @@ function EditorPage() {
   const [showShareDialog, setShowShareDialog] = useState(false);
 
   // Version history
-  const [versions, setVersions] = useState<any[]>([]);
+  const [versions, setVersions] = useState<VersionItem[]>([]);
   const [versionTitle, setVersionTitle] = useState("");
   const [isCreatingVersion, setIsCreatingVersion] = useState(false);
 
@@ -123,7 +160,7 @@ function EditorPage() {
   // Share
   const [shareEmail, setShareEmail] = useState("");
   const [shareRole, setShareRole] = useState<"editor" | "viewer">("editor");
-  const [collabs, setCollabs] = useState<any[]>([]);
+  const [collabs, setCollabs] = useState<CollabItem[]>([]);
   const [isInviting, setIsInviting] = useState(false);
 
   // Online collaborators from awareness
@@ -164,6 +201,34 @@ function EditorPage() {
   useEffect(() => {
     if (!documentId) return;
 
+    // Global error recovery if local IndexedDB cache contains a corrupt/truncated Yjs update
+    const handleCorruptIDB = (event: PromiseRejectionEvent | ErrorEvent) => {
+      const msg =
+        ("reason" in event && event.reason && (event.reason.message || String(event.reason))) ||
+        ("message" in event && event.message) ||
+        "";
+      if (
+        msg.includes("Unexpected end of array") ||
+        msg.includes("Integer out of Range") ||
+        msg.includes("Invalid typed array length") ||
+        msg.includes("RangeError") ||
+        msg.includes("Caught error while handling a Yjs update") ||
+        msg.includes("decoding")
+      ) {
+        console.warn("[IndexedDB] Corrupt Yjs history detected in browser storage. Clearing IDB cache and reloading...");
+        try {
+          indexedDB.deleteDatabase(`syncscribe-${documentId}`);
+        } catch {}
+        const recoveryKey = `idb_recovered_${documentId}`;
+        if (!sessionStorage.getItem(recoveryKey)) {
+          sessionStorage.setItem(recoveryKey, "true");
+          window.location.reload();
+        }
+      }
+    };
+    window.addEventListener("unhandledrejection", handleCorruptIDB);
+    window.addEventListener("error", handleCorruptIDB);
+
     // IndexedDB persistence with error recovery for stale/corrupt Yjs data
     let idb: IndexeddbPersistence;
     try {
@@ -174,23 +239,25 @@ function EditorPage() {
         setIsLocalLoaded(true);
       });
 
-      // If IndexedDB data is corrupt (e.g. from a different Yjs version),
-      // clear it and reload so a fresh doc is loaded from the server
       idb.on("error" as "synced", (err: unknown) => {
         console.warn("[IndexedDB] Corrupt data, clearing and reloading:", err);
         idb.clearData().then(() => window.location.reload());
       });
     } catch (err) {
-      // Fallback: if IDB init itself throws, continue without local persistence
       console.warn("[IndexedDB] Failed to initialize:", err);
-      setIsLocalLoaded(true); // treat as if synced immediately
-      // fallback mock object
+      setIsLocalLoaded(true);
       idb = { destroy: () => {} } as IndexeddbPersistence;
       setIdbProvider(null);
     }
 
     // WebSocket provider — share the same awareness instance the editor uses
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:1234";
+    const isLocalhost =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1");
+    const wsUrl = isLocalhost
+      ? "ws://localhost:1234"
+      : process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:1234";
     const ws = new WebsocketProvider(wsUrl, documentId, ydoc, {
       connect: true,
       awareness,
@@ -231,6 +298,8 @@ function EditorPage() {
     updateUsers();
 
     return () => {
+      window.removeEventListener("unhandledrejection", handleCorruptIDB);
+      window.removeEventListener("error", handleCorruptIDB);
       awareness.off("change", updateUsers);
       ws.destroy();
       idb.destroy();
@@ -267,7 +336,6 @@ function EditorPage() {
         class: "tiptap focus:outline-none",
       },
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps — this editor instance lives forever
 
   // Sync editable state reactively without rebuilding the editor
@@ -282,13 +350,18 @@ function EditorPage() {
     if (!docTitle || isReadOnly) return;
 
     const timeout = setTimeout(async () => {
+      setIsSaving(true);
       try {
         await fetch(`/api/documents/${documentId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title: docTitle }),
         });
+        setLastSaved(new Date());
       } catch { /* silent fail for title update */ }
+      finally {
+        setIsSaving(false);
+      }
     }, 500);
 
     return () => clearTimeout(timeout);
@@ -304,7 +377,7 @@ function EditorPage() {
     setIsCreatingVersion(true);
     try {
       const state = Y.encodeStateAsUpdate(ydoc);
-      const snapshot = Buffer.from(state).toString("base64");
+      const snapshot = uint8ArrayToBase64(state);
 
       const res = await fetch(`/api/documents/${documentId}/versions`, {
         method: "POST",
@@ -332,7 +405,7 @@ function EditorPage() {
   };
 
   // Fetch versions
-  const fetchVersions = async () => {
+  const fetchVersions = useCallback(async () => {
     try {
       const res = await fetch(`/api/documents/${documentId}/versions`);
       if (res.ok) {
@@ -342,7 +415,7 @@ function EditorPage() {
     } catch {
       console.error("Failed to fetch versions");
     }
-  };
+  }, [documentId]);
 
   // Restore version
   const restoreVersion = async (versionId: string) => {
@@ -356,7 +429,7 @@ function EditorPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: "Auto-backup before restore",
-          snapshot: Buffer.from(currentState).toString("base64"),
+          snapshot: uint8ArrayToBase64(currentState),
         }),
       });
 
@@ -367,8 +440,29 @@ function EditorPage() {
       const version = await res.json();
       const snapshotData = Uint8Array.from(atob(version.snapshot), (c) => c.charCodeAt(0));
 
-      // Apply the snapshot — Yjs will merge this deterministically
-      Y.applyUpdate(ydoc, snapshotData);
+      // Create a temporary Y.Doc to parse the old state
+      const tempDoc = new Y.Doc();
+      Y.applyUpdate(tempDoc, snapshotData);
+
+      // Extract content using a headless editor instance
+      const tempEditor = new Editor({
+        extensions: [
+          StarterKit,
+          Collaboration.configure({ document: tempDoc }),
+          TaskList,
+          TaskItem.configure({ nested: true }),
+          TextAlign.configure({ types: ["heading", "paragraph"] }),
+          Typography,
+        ],
+      });
+      
+      const restoredJson = tempEditor.getJSON();
+      tempEditor.destroy();
+
+      // Replace current editor content
+      if (editor) {
+        editor.commands.setContent(restoredJson);
+      }
 
       toast.success("Version restored successfully!");
       fetchVersions();
@@ -378,7 +472,7 @@ function EditorPage() {
   };
 
   // Fetch collaborators
-  const fetchCollabs = async () => {
+  const fetchCollabs = useCallback(async () => {
     try {
       const res = await fetch(`/api/documents/${documentId}/collaborators`);
       if (res.ok) {
@@ -388,7 +482,7 @@ function EditorPage() {
     } catch {
       console.error("Failed to fetch collaborators");
     }
-  };
+  }, [documentId]);
 
   // Invite collaborator
   const inviteCollab = async () => {
@@ -480,11 +574,11 @@ function EditorPage() {
 
   useEffect(() => {
     if (showVersionPanel) fetchVersions();
-  }, [showVersionPanel]);
+  }, [showVersionPanel, fetchVersions]);
 
   useEffect(() => {
     if (showShareDialog) fetchCollabs();
-  }, [showShareDialog]);
+  }, [showShareDialog, fetchCollabs]);
 
 
   if (authStatus === "loading") {
@@ -526,6 +620,17 @@ function EditorPage() {
 
           {/* Right */}
           <div className="flex items-center gap-2">
+            {/* Save Status indicator */}
+            {(isSaving || lastSaved) && (
+              <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                {isSaving
+                  ? "Saving..."
+                  : lastSaved
+                  ? `Saved ${formatRelativeTime(lastSaved.toISOString())}`
+                  : ""}
+              </span>
+            )}
+
             {/* Connection status */}
             <div
               className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-full"
@@ -859,7 +964,7 @@ function EditorPage() {
                       No versions yet
                     </p>
                   ) : (
-                    versions.map((v: any) => (
+                    versions.map((v: VersionItem) => (
                       <div
                         key={v.id}
                         className="p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
@@ -1039,7 +1144,7 @@ function EditorPage() {
 
             {/* Collaborator list */}
             <div className="space-y-2 max-h-60 overflow-y-auto">
-              {collabs.map((c: any) => (
+              {collabs.map((c: CollabItem) => (
                 <div
                   key={c.id}
                   className="flex items-center justify-between py-2 px-3 rounded-lg bg-secondary/30"

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "../../../../../auth";
 import { db } from "@/db";
-import { documents, collaborators } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { documents } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { updateDocumentSchema } from "@/lib/validators";
 import { requireAuth, checkDocumentAccess } from "@/lib/authorization";
 

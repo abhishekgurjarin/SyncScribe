@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "../../../../../../auth";
 import { db } from "@/db";
-import { collaborators, users, documents } from "@/db/schema";
+import { collaborators, users } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import {
-  inviteCollaboratorSchema,
-  updateCollaboratorSchema,
-} from "@/lib/validators";
+import { inviteCollaboratorSchema } from "@/lib/validators";
 import { requireAuth, checkDocumentAccess } from "@/lib/authorization";
 
 export async function GET(

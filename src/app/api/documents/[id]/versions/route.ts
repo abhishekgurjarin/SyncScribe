@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "../../../../../../auth";
 import { db } from "@/db";
-import { documentVersions, documents } from "@/db/schema";
+import { documentVersions } from "@/db/schema";
 import { eq, desc, count } from "drizzle-orm";
 import { createVersionSchema } from "@/lib/validators";
 import { requireAuth, checkDocumentAccess } from "@/lib/authorization";
