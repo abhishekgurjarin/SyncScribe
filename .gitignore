@@ -42,3 +42,4 @@ next-env.d.ts
 
 server_actions_interview_guide.md
 complete_bug_fixes_documentation.md
+authentication_architecture.md

@@ -29,6 +29,13 @@ export const metadata: Metadata = {
     "version control",
   ],
   authors: [{ name: "Abhishek" }],
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/icon.svg",
+    apple: "/apple-icon",
+  },
 };
 
 export default function RootLayout({
